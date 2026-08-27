@@ -55,6 +55,67 @@ code 0. **The wiring works.**
 
 ## Two findings that matter more than the wiring
 
+### 0. Initialisation experiment — see `init_experiment.cpp`
+
+```bash
+.\harness\build_experiment.bat
+.\build\rzn_experiment.exe 20000 [sensor-bit]
+```
+
+`instantiate()` seeds every weight and target from the fan-out index alone:
+
+```cpp
+input_weights[i][j] = (j % 2 == 0 ? -16384 : 16384);
+input_targets[i][j] =  j % hidden_sz;
+```
+
+Neither depends on the source unit `i`, so every source contributes an
+identical vector and *which* input bit was active cannot affect the result —
+only *how many* were. Working it through by hand: `weight_sums[k]` becomes
+`(active count) x (k even ? -16384 : +16384)`, so even units never fire and odd
+ones always do, the output is always `14`, and
+`sensor = (14 >> 1) & 1 = 1` — exactly the "asked for right 49999" observed
+below.
+
+The experiment rewrites weights and targets in place after `instantiate()` and
+calls `perform_iann()` directly, so it measures the network without `cycle()`
+in the way. **The model source is not modified.** 20 000 real foveal inputs
+containing 502 distinct values:
+
+| scheme | distinct outputs | layer-0 patterns | final patterns | output bits that move |
+|---|---|---|---|---|
+| shipped (control) | **1** (`14`) | 1 | 1 | none |
+| targets vary by source | **12** | 10366 | 10366 | 0 1 2 3 |
+| weights vary by source | 2 | 10368 | 1103 | 1 |
+| both vary by source | 8 | 10369 | 10369 | 0 1 2 3 |
+| both vary + graded magnitudes | 7 | 10370 | 10370 | 0 1 2 3 |
+
+**Confirmed.** As shipped the network cannot respond to its input at all — one
+output value, no bit ever moves. Making targets depend on the source is both
+necessary and sufficient; varying weights alone leaves the network almost as
+flat (2 outputs, only bit 1 moving, and not until trial 7830).
+
+Two cautions about reading this table:
+
+- Deriving a target and a weight sign from the *same* random value silently
+  re-flattens the network: `hidden_sz` is even, so `r % hidden_sz` has the same
+  parity as `r`, which locks every even-numbered unit to negative weights. An
+  earlier version of this experiment did exactly that and reported a spurious
+  collapse. `h2w()` exists to keep the two draws independent.
+- Distinct output *values* is the wrong headline number on its own. `cycle()`
+  acts on bit 1 (next sensor) and bit 0 (recall flag), so a scheme can produce
+  several output values while the bits the model actually acts on never move.
+  The last column is the one that matters.
+
+**Still unexplained:** applying the targets fix inside a live `cycle()` run
+(`rzn_harness -fix-init`) does *not* change the sensor histogram — still 1 left
+and 49 999 right, byte-identical to the unfixed run. `perform_iann()` in
+isolation clearly varies bit 1 under the same scheme and the same input words,
+so something in `cycle()` re-pins the output. It is not gradual weight
+saturation: the histogram is already pinned at 50 cycles. Narrowed to the
+per-cycle reward/disincentive path, not the initialisation and not
+`perform_iann()`. Unresolved.
+
 ### 1. The model's output does not vary with its input
 
 The model chooses which camera to read next from its own output

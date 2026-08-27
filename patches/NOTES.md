@@ -134,6 +134,23 @@ moment a rewards or disincentives vector outgrows its initial 16 slots.
 - **`handle_output()`'s switch has no `break`s**, the same fallthrough pattern
   fixed in `read_sensory`. Left alone because every case calls a stub, so the
   intended behaviour is not inferable from the code.
-- **The model's output does not vary with its input.** See
-  `../harness/README.md` — this is the finding that matters most for feeding
-  it real vision.
+- **`simp_vector_append` is called with the wrong counters** in the
+  disincentives branch:
+
+  ```c
+  line 785:  simp_vector_append(&(stm->rewards),  &(stm->rwtop), &(stm->rwcap), input);
+  line 857:  simp_vector_append(&(stm->rewards),  &(stm->dvtop), &(stm->dvcap), input);
+  ```
+
+  The second should target `stm->dsnctvs`. As written, disincentives are never
+  recorded, and two independent counter pairs write into the same array — each
+  overwriting the other's entries. Found while tracing the constant-output
+  behaviour; not fixed, because whether the fix is the array or the counters
+  depends on what you intend the two vectors to be.
+
+- **The model's output does not vary with its input.** Traced to
+  `instantiate()` seeding every weight and target from the fan-out index alone,
+  never from the source unit, which makes the network unable to distinguish
+  *which* input bit was active. Measured and confirmed — see
+  `../harness/README.md`. This is the finding that matters most for feeding it
+  real vision.

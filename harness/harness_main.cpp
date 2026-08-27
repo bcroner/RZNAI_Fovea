@@ -34,9 +34,47 @@ extern "C" {
 __int32 in_0() { return rzn_bridge_read(RZN_SENSOR_LEFT); }
 __int32 in_1() { return rzn_bridge_read(RZN_SENSOR_RIGHT); }
 
+static unsigned h2(unsigned a, unsigned b)
+{
+    unsigned h = a * 374761393u + b * 668265263u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+/* instantiate() seeds every target as `j % hidden_sz`, which depends only on
+ * the fan-out index and not on the source unit, so every source contributes an
+ * identical vector and which source was active cannot affect the result.
+ * -fix-init rewrites the targets to depend on the source as well.  See
+ * init_experiment.cpp for the measurement that identified this. */
+static void fix_init(AGI_Sys *stm)
+{
+    const __int32 in_units = stm->in_sz * stm->In_Q_ct;
+    const __int32 fan      = stm->hidden_sz >> 1;
+    __int32 i, j, c;
+
+    for (i = 0; i < in_units; i++)
+        for (j = 0; j < fan; j++)
+            stm->input_targets[i][j] =
+                (__int32)(h2((unsigned)i, (unsigned)j) % (unsigned)stm->hidden_sz);
+
+    for (c = 0; c < stm->hidden_ct; c++)
+        for (i = 0; i < stm->hidden_sz; i++)
+            for (j = 0; j < fan; j++)
+                stm->hidden[c]->targets[i][j] =
+                    (__int32)(h2((unsigned)(c * 7919 + i), (unsigned)j)
+                              % (unsigned)stm->hidden_sz);
+
+    for (i = 0; i < stm->hidden_sz; i++)
+        for (j = 0; j < (stm->out_sz >> 1); j++)
+            stm->output_targets[i][j] =
+                (__int32)(h2((unsigned)i + 104729u, (unsigned)j)
+                          % (unsigned)stm->out_sz);
+}
+
 int main(int argc, char **argv)
 {
     int32_t w = 64, h = 48, sx = -1, sy = -1;
+    int fix = 0;
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -44,8 +82,9 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-h") && i + 1 < argc) h = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-x") && i + 1 < argc) sx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-y") && i + 1 < argc) sy = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "-fix-init")) fix = 1;
         else {
-            printf("usage: rzn_harness [-w W] [-h H] [-x X] [-y Y]\n");
+            printf("usage: rzn_harness [-w W] [-h H] [-x X] [-y Y] [-fix-init]\n");
             return 2;
         }
     }
@@ -60,6 +99,8 @@ int main(int argc, char **argv)
     printf("  seed          (%d, %d)\n", sx, sy);
     printf("  packing       profile %d\n", RZN_PACK_PROFILE);
     printf("  cycle limit   %d\n", (int)RZNAI_AGI_MAX_CYCLES);
+    printf("  init          %s\n",
+           fix ? "targets vary by source (-fix-init)" : "as shipped");
 
     if (!rzn_bridge_open(w, h, sx, sy)) {
         printf("error: could not open the foveal source\n");
@@ -72,6 +113,8 @@ int main(int argc, char **argv)
             printf("error: instantiate() returned null\n");
             return 1;
         }
+        if (fix)
+            fix_init(stm);
         printf("  model         in_sz=%d In_Q_ct=%d sensory_bits=%d "
                "hidden_sz=%d hidden_ct=%d\n",
                (int)stm->in_sz, (int)stm->In_Q_ct, (int)stm->sensory_bits,
