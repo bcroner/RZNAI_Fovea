@@ -1,0 +1,88 @@
+From c41996642dd56779787df9c9ab22ddf096f9ec0f Mon Sep 17 00:00:00 2001
+From: bcroner <seekandwander@gmail.com>
+Date: Thu, 27 Aug 2026 09:48:36 -0700
+Subject: [PATCH 2/4] Allow an integrator to supply sensors, a driver, and a
+ cycle limit
+
+in_0() and in_1() are documented as placeholders ("actually read from sensor
+0", "simulation: return 0"), but a program linking this file cannot replace
+them without editing it, and main() cannot be replaced at all.
+
+Three knobs, all defaulting to the current standalone behaviour so an
+unconfigured build is byte-for-byte unchanged:
+
+  RZNAI_AGI_MAX_CYCLES        replaces the hard-coded 2000000000 in
+                              terminate_program(); lets a test run finish
+  RZNAI_AGI_EXTERNAL_SENSORS  omits the in_0 / in_1 simulation stubs so a real
+                              sensor front end can define them
+  RZNAI_AGI_NO_MAIN           omits main() so a host program can drive cycle()
+
+No behavioural change without one of these defined.
+---
+ RZNAI_AGI.cpp | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/RZNAI_AGI.cpp b/RZNAI_AGI.cpp
+index 68f8f6f..7438a9d 100644
+--- a/RZNAI_AGI.cpp
++++ b/RZNAI_AGI.cpp
+@@ -6,6 +6,18 @@
+ #ifndef __RZNAI_AGI_CPP__
+ #define __RZNAI_AGI_CPP__
+ 
++// Integration knobs.  All three default to the standalone behaviour, so an
++// unconfigured build is unchanged.
++//
++//   RZNAI_AGI_MAX_CYCLES        how long cycle() runs before terminating
++//   RZNAI_AGI_EXTERNAL_SENSORS  define to supply your own in_0 / in_1 and
++//                               leave the simulation stubs out of the build
++//   RZNAI_AGI_NO_MAIN           define to supply your own driver
++
++#ifndef RZNAI_AGI_MAX_CYCLES
++#define RZNAI_AGI_MAX_CYCLES 2000000000
++#endif
++
+ using namespace std;
+ 
+ void simp_queue_enqueue(Simp_Queue* queue, Simp_Queue* parm) {
+@@ -460,9 +472,11 @@ __int32 perform_iann(AGI_Sys* stm) {
+ 
+ bool terminate_program(__int32 cycles) {
+ 
+-    return cycles >= 2000000000;    // 2 billion as an example of how long to run the program
++    return cycles >= RZNAI_AGI_MAX_CYCLES;
+ }
+ 
++#ifndef RZNAI_AGI_EXTERNAL_SENSORS
++
+ __int32 in_0() {
+ 
+     // actually read from sensor 0
+@@ -479,6 +493,8 @@ __int32 in_1() {
+     return 1;
+ }
+ 
++#endif // RZNAI_AGI_EXTERNAL_SENSORS
++
+ __int32 read_sensory(AGI_Sys *stm, __int32 sensor) {
+ 
+     __int32 input;
+@@ -980,6 +996,8 @@ void cycle(AGI_Sys * stm) {
+ 
+ }
+ 
++#ifndef RZNAI_AGI_NO_MAIN
++
+ //  Driver function to test above functions
+ int main()
+ {
+@@ -987,4 +1005,6 @@ int main()
+     cycle(stm);
+ }
+ 
++#endif // RZNAI_AGI_NO_MAIN
++
+ #endif
+-- 
+2.51.0.windows.2
+

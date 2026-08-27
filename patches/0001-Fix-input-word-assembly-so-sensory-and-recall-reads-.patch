@@ -1,0 +1,167 @@
+From 03dfc5e9d68fb392d0e91834e9a9378ba5af8732 Mon Sep 17 00:00:00 2001
+From: bcroner <seekandwander@gmail.com>
+Date: Thu, 27 Aug 2026 09:47:37 -0700
+Subject: [PATCH 1/4] Fix input-word assembly so sensory and recall reads are
+ not always zero
+
+RZNAI_AGI.cpp did not compile: `ret_val |=| 0x1` is a syntax error, and both
+recall functions were called with three arguments where four are declared.
+
+Beyond that, the input path produced nothing usable. The `(x << n) & 0x0`
+idiom appears ten times across read_sensory, read_from_recall_next and
+read_from_recall_new; masking with zero discards the shifted payload, so every
+input word the model could construct was zero regardless of source.
+
+Four sites already agree on the intended word layout, so the fix follows them
+rather than inventing one:
+
+  bit 0                source flag, 1 = read from recall, 0 = read from sensor
+  bits 1..sensory_bits sensor id, or the rewards/disincentives bit for recall
+  above that           the payload
+
+  - cycle(): create_dict_entry(..., input >> 1, ...) and
+    out_read_from_recall = output & 0x1
+  - cycle(): recall_rwdv = (output >> 1) & 0x1, per its own comment
+  - generateBFSs(): executeBFS(stm, stm->Current_Input >> 1, ...)
+  - both recall paths build (payload << 1 | rw) << 1 | 1
+
+read_sensory was the odd one out and now builds the same shape with a 0 source
+flag.
+
+Also fixed in the same path:
+
+  - read_sensory: switch cases had no break, so sensor 0's reading was always
+    overwritten by sensor 1's; and `input` was returned uninitialised when
+    `sensor` matched neither case
+  - perform_iann: `temp_input >> 1;` discarded its result, so all in_sz input
+    bits decoded bit 0 of the word
+  - read_from_recall_next: `while (...) ix;` is a no-op, so both search loops
+    never terminated
+  - read_from_recall_next: the disincentives branch guarded and walked
+    kb_dv_path but then read from kb_rw_path
+  - cycle(): pass recall_rwdv as the rw argument to both recall calls
+
+Compiles clean under MSVC 14.51 at /W3 with no warnings.
+---
+ RZNAI_AGI.cpp | 48 ++++++++++++++++++++++++++++--------------------
+ 1 file changed, 28 insertions(+), 20 deletions(-)
+
+diff --git a/RZNAI_AGI.cpp b/RZNAI_AGI.cpp
+index cba1103..68f8f6f 100644
+--- a/RZNAI_AGI.cpp
++++ b/RZNAI_AGI.cpp
+@@ -399,7 +399,7 @@ __int32 perform_iann(AGI_Sys* stm) {
+ 
+         for (__int32 j = 0; j < stm->in_sz; j++) {
+             input_b[i * stm->in_sz + j] = temp_input & 1;
+-            temp_input >> 1;
++            temp_input >>= 1;
+         }
+ 
+     }
+@@ -484,16 +484,24 @@ __int32 read_sensory(AGI_Sys *stm, __int32 sensor) {
+     __int32 input;
+ 
+     switch (sensor) {
+-        case 0: input = in_0(); // get actual reading from sensor 0
+-        case 1: input = in_1(); // get actual reading from sensor 1
++        case 0: input = in_0(); break; // get actual reading from sensor 0
++        case 1: input = in_1(); break; // get actual reading from sensor 1
++        default: return 0;             // no such sensor: nothing was read
+     }
+ 
+     __int32 sensor_id = 0;
+ 
++    for (__int32 i = 0; i < stm->sensory_bits; i++) {
++        sensor_id = sensor_id << 1;
++        sensor_id |= 0x1;
++    }
++
++    sensor_id = sensor & sensor_id; // sensor id, clipped to sensory_bits
++
+     // set read from sensory
+-    input = (input << stm->sensory_bits) & 0x0;
+-    input = input | sensor;
+-    input = (input << 1) & 0x0;
++    input = (input << stm->sensory_bits);
++    input = input | sensor_id;
++    input = (input << 1) | 0x0; // indicates NOT read from recall
+ 
+     return input;
+ }
+@@ -505,13 +513,13 @@ __int32 read_from_recall_next(AGI_Sys *stm, __int32 previous_input_state, __int3
+             return 0;
+         __int32 ix = 0;
+         while (stm->kb_rw_path[ix] != -1 && stm->kb_rw_path[ix] != previous_input_state)
+-            ix;
++            ix++;
+         if (stm->kb_rw_path[ix] == -1 || stm->kb_rw_path[ix + 1] == -1)
+             return 0;
+         __int32 ret_val = stm->kb_rw_path[ix + 1];
+-        ret_val = (ret_val << 1) & 0x0;
++        ret_val = (ret_val << 1);
+         ret_val |= 0x1; // indicates reading from rewards
+-        ret_val = (ret_val << 1) & 0x0;
++        ret_val = (ret_val << 1);
+         ret_val |= 0x1; // indicates read from recall
+         return ret_val;
+     }
+@@ -520,13 +528,13 @@ __int32 read_from_recall_next(AGI_Sys *stm, __int32 previous_input_state, __int3
+             return 0;
+         __int32 ix = 0;
+         while (stm->kb_dv_path[ix] != -1 && stm->kb_dv_path[ix] != previous_input_state)
+-            ix;
++            ix++;
+         if (stm->kb_dv_path[ix] == -1 || stm->kb_dv_path[ix + 1] == -1)
+             return 0;
+-        __int32 ret_val = stm->kb_rw_path[ix + 1];
+-        ret_val = (ret_val << 1) & 0x0;
++        __int32 ret_val = stm->kb_dv_path[ix + 1];
++        ret_val = (ret_val << 1);
+         ret_val |= 0x0; // indicates reading from disincentives
+-        ret_val = (ret_val << 1) & 0x0;
++        ret_val = (ret_val << 1);
+         ret_val |= 0x1; // indicates read from recall
+         return ret_val;
+     }
+@@ -557,9 +565,9 @@ __int32 read_from_recall_new(AGI_Sys *stm, __int32 previous_input_state, __int32
+             return 0;
+ 
+         __int32 ret_val = cur_entry->vect_state;
+-        ret_val = (ret_val << 1) & 0x0;
++        ret_val = (ret_val << 1);
+         ret_val |= 0x1; // indicates reading from rewards
+-        ret_val = (ret_val << 1) & 0x0;
++        ret_val = (ret_val << 1);
+         ret_val |= 0x1; // indicates read from recall
+         return ret_val;
+     }
+@@ -584,10 +592,10 @@ __int32 read_from_recall_new(AGI_Sys *stm, __int32 previous_input_state, __int32
+             return 0;
+ 
+         __int32 ret_val = cur_entry->vect_state;
+-        ret_val = (ret_val << 1) & 0x0;
++        ret_val = (ret_val << 1);
+         ret_val |= 0x0; // indicates reading from disincentives
+-        ret_val = (ret_val << 1) & 0x0;
+-        ret_val |=| 0x1; // indicates read from recall
++        ret_val = (ret_val << 1);
++        ret_val |= 0x1; // indicates read from recall
+         return ret_val;
+     }
+ }
+@@ -685,9 +693,9 @@ void cycle(AGI_Sys * stm) {
+         if (!in_read_from_recall)
+             input = read_sensory(stm, sensor);
+         else if (read_from_recall_input || (prev_recall_rwdv != recall_rwdv))
+-            input = read_from_recall_new(stm, previous_input_state, previous_output_action);
++            input = read_from_recall_new(stm, previous_input_state, previous_output_action, recall_rwdv);
+         else
+-            input = read_from_recall_next(stm, previous_input_state, previous_output_action); 
++            input = read_from_recall_next(stm, previous_input_state, previous_output_action, recall_rwdv); 
+ 
+         stm->Current_Input = input;
+         stm->Input_Queue[0] = stm->Current_Input;
+-- 
+2.51.0.windows.2
+

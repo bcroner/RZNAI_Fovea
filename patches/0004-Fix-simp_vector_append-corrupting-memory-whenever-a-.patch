@@ -1,0 +1,37 @@
+From 44effcdefb72b5765a3309be6da9697b321f301e Mon Sep 17 00:00:00 2001
+From: bcroner <seekandwander@gmail.com>
+Date: Thu, 27 Aug 2026 10:06:15 -0700
+Subject: [PATCH 4/4] Fix simp_vector_append corrupting memory whenever a
+ vector grows
+
+    newv[i] = *v[i];
+
+parses as *(v[i]). v is __int32**, so v[i] steps past the single pointer it
+addresses and the result is dereferenced as a pointer. Only i == 0 is
+accidentally correct, because *v[0] and (*v)[0] agree there.
+
+Running with foveal sensor input, cycle() appends a reward and a disincentive
+on almost every cycle. rwcap starts at 16, so the growth path is taken shortly
+after the sixteenth append and the program faults with an access violation.
+Observed between 500 and 1000 cycles; with the fix a 50000-cycle run completes
+and the vectors reach 681 entries each.
+---
+ RZNAI_AGI.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/RZNAI_AGI.cpp b/RZNAI_AGI.cpp
+index dcbbcbf..f902f51 100644
+--- a/RZNAI_AGI.cpp
++++ b/RZNAI_AGI.cpp
+@@ -68,7 +68,7 @@ void simp_vector_append(__int32** v, __int32 * vtop, __int32 * vcap, __int32 dat
+         for (__int64 i = 0; i < *vcap * 2; i++)
+             newv[i] = 0;
+         for (__int64 i = 0; i < *vcap; i++)
+-            newv[i] = *v[i];
++            newv[i] = (*v)[i];
+         *vcap *= 2;
+         delete[] * v;
+         *v = newv;
+-- 
+2.51.0.windows.2
+
