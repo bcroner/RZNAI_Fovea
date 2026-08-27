@@ -107,14 +107,63 @@ Two cautions about reading this table:
   several output values while the bits the model actually acts on never move.
   The last column is the one that matters.
 
-**Still unexplained:** applying the targets fix inside a live `cycle()` run
-(`rzn_harness -fix-init`) does *not* change the sensor histogram — still 1 left
-and 49 999 right, byte-identical to the unfixed run. `perform_iann()` in
-isolation clearly varies bit 1 under the same scheme and the same input words,
-so something in `cycle()` re-pins the output. It is not gradual weight
-saturation: the histogram is already pinned at 50 cycles. Narrowed to the
-per-cycle reward/disincentive path, not the initialisation and not
-`perform_iann()`. Unresolved.
+### 0b. Resolved: the fix does work, and the probe was blind
+
+An earlier revision of this file reported that `rzn_harness -fix-init` changed
+nothing in a live `cycle()` run. **That was wrong, and the mistake was in the
+measurement.** Tracing the actual output values inside `cycle()` shows:
+
+```
+as shipped   cycle 0 out=14   1 out=14   2 out=14   3 out=14  ...
+-fix-init    cycle 0 out=11   1 out=11   2 out= 3   3 out= 3  ...
+```
+
+The fix changes the network's behaviour immediately. The sensor histogram
+could not see it because `sensor = (output >> 1) & 1` observes **bit 1 only**,
+and bit 1 is set in `14`, `11` and `3` alike. A one-bit probe reported "no
+change" for a network whose output had changed completely. `-no-reinforce`
+(zeroing `inc_amt`/`dec_amt`) likewise changes nothing measurable, so the
+reward path is *not* what holds bit 1 fixed either.
+
+### 0c. The learning rule has the same flaw as the initialisation
+
+Every reinforcement site keys the direction on the fan-out index:
+
+```cpp
+line 826:  input_weights[i][k]     += (k % 2 == 0 ? -inc_amt : inc_amt);
+line 832:  hidden[i]->weights[j][k]+= (k % 2 == 0 ? -inc_amt : inc_amt);
+line 841:  output_weights[i][j]    += (j % 2 == 0 ? -inc_amt : inc_amt);
+```
+
+and the three disincentive sites (898, 904, 913) mirror them. None depends on
+the source unit, the target unit, or *which* input caused the firing — so a
+reward cannot strengthen the pathway that earned it. It just pushes weights
+apart by fan-out parity, which is the same degenerate structure
+`instantiate()` starts from. Fixing the initialisation is therefore necessary
+but not sufficient: every reward nudges the network back toward parity.
+
+### 0d. The recall path is unreachable
+
+```cpp
+line 706:  bool in_read_from_recall = false;   // never assigned again
+line 707:  bool read_from_recall_input = false; // never assigned again
+line 731:  if (!in_read_from_recall)            // therefore always true
+```
+
+`in_read_from_recall` is declared `false` and never written. The model always
+reads from sensors and **never from recall**, so `read_from_recall_new()`,
+`read_from_recall_next()`, `generateBFSs()`, `executeBFS()` and every
+Knowledge Bank lookup are unreachable.
+
+`out_read_from_recall = output & 0x1` computes the decision every cycle, and is
+used only to gate `handle_output()`. It is never propagated to
+`in_read_from_recall` — the missing line looks like
+`in_read_from_recall = out_read_from_recall;` at the end of the loop body.
+
+The consequence is larger than the constant output: `create_dict_entry()`
+writes to the Knowledge Bank every cycle, and nothing ever reads it back. As it
+stands the model has no working memory, so it cannot use anything it records
+about the foveal stream.
 
 ### 1. The model's output does not vary with its input
 

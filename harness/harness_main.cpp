@@ -75,6 +75,7 @@ int main(int argc, char **argv)
 {
     int32_t w = 64, h = 48, sx = -1, sy = -1;
     int fix = 0;
+    int quiet = 0;
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -83,8 +84,10 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-x") && i + 1 < argc) sx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-y") && i + 1 < argc) sy = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-fix-init")) fix = 1;
+        else if (!strcmp(argv[i], "-no-reinforce")) quiet = 1;
         else {
-            printf("usage: rzn_harness [-w W] [-h H] [-x X] [-y Y] [-fix-init]\n");
+            printf("usage: rzn_harness [-w W] [-h H] [-x X] [-y Y] "
+                   "[-fix-init] [-no-reinforce]\n");
             return 2;
         }
     }
@@ -101,6 +104,8 @@ int main(int argc, char **argv)
     printf("  cycle limit   %d\n", (int)RZNAI_AGI_MAX_CYCLES);
     printf("  init          %s\n",
            fix ? "targets vary by source (-fix-init)" : "as shipped");
+    printf("  reinforcement %s\n",
+           quiet ? "disabled (inc_amt = dec_amt = 0)" : "as shipped");
 
     if (!rzn_bridge_open(w, h, sx, sy)) {
         printf("error: could not open the foveal source\n");
@@ -115,6 +120,17 @@ int main(int argc, char **argv)
         }
         if (fix)
             fix_init(stm);
+
+        /* Every reinforcement site keys the direction on the fan-out index --
+         * input_weights[i][k] += (k % 2 ? ... ), and the same for the hidden
+         * and output layers -- never on the source, the target, or which
+         * input caused the firing. Zeroing the step sizes neutralises the
+         * whole reward and disincentive path without touching the model, so
+         * its effect can be separated from the initialisation's. */
+        if (quiet) {
+            stm->inc_amt = 0;
+            stm->dec_amt = 0;
+        }
         printf("  model         in_sz=%d In_Q_ct=%d sensory_bits=%d "
                "hidden_sz=%d hidden_ct=%d\n",
                (int)stm->in_sz, (int)stm->In_Q_ct, (int)stm->sensory_bits,

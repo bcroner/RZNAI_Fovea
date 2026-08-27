@@ -148,6 +148,35 @@ moment a rewards or disincentives vector outgrows its initial 16 slots.
   behaviour; not fixed, because whether the fix is the array or the counters
   depends on what you intend the two vectors to be.
 
+- **`in_read_from_recall` is never assigned**, so the recall path is
+  unreachable:
+
+  ```c
+  line 706:  bool in_read_from_recall = false;    // never written again
+  line 707:  bool read_from_recall_input = false; // never written again
+  line 731:  if (!in_read_from_recall)            // therefore always true
+  ```
+
+  The model always reads from sensors and never from recall, which makes
+  `read_from_recall_new()`, `read_from_recall_next()`, `generateBFSs()`,
+  `executeBFS()` and every Knowledge Bank lookup dead code.
+  `out_read_from_recall = output & 0x1` computes the decision each cycle but
+  only gates `handle_output()`; the missing line looks like
+  `in_read_from_recall = out_read_from_recall;` at the end of the loop.
+
+  This matters more than the constant output: `create_dict_entry()` writes to
+  the Knowledge Bank every cycle and nothing reads it back, so the model has no
+  working memory. Not fixed — where the assignment belongs, and whether
+  `read_from_recall_input` should be driven from the same bit, is a design
+  question.
+
+- **The reinforcement rule keys on the fan-out index**, not on the source, the
+  target, or which input caused the firing (lines 826, 832, 841 and their
+  disincentive mirrors 898, 904, 913). A reward cannot strengthen the pathway
+  that earned it; it only pushes weights apart by fan-out parity — the same
+  degenerate structure `instantiate()` starts from. Fixing the initialisation
+  is necessary but not sufficient while this stands.
+
 - **The model's output does not vary with its input.** Traced to
   `instantiate()` seeding every weight and target from the fan-out index alone,
   never from the source unit, which makes the network unable to distinguish
