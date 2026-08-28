@@ -3,13 +3,13 @@
 #   ./build.sh          build demo + tests
 #   ./build.sh test     build, then run the tests
 #   DISPARITY=1 ./build.sh
-#   PROFILE=32 ./build.sh test    lossless packing; needs the model's in_sz raised
+#   PROFILE=16 ./build.sh test    narrow packing for a model built with in_sz=16
 set -e
 
 CC=${CC:-gcc}
 OPT=${OPT:--O2}
 WARN="-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion"
-PROFILE=${PROFILE:-16}
+PROFILE=${PROFILE:-32}
 CFLAGS="-std=c11 $WARN $OPT -Isrc -DRZN_PACK_PROFILE=$PROFILE"
 
 CORE="src/rzn_spiral.c src/rzn_pack.c src/rzn_frame.c src/rzn_fovea.c src/rzn_agi_sink.c"

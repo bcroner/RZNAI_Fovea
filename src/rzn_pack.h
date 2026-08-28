@@ -6,7 +6,9 @@
  *
  *   sensory_bits = 1   low bits reserved to identify the sensor -- exactly
  *                      what a two-camera stereo rig needs.
- *   in_sz        = 16  perform_iann() decodes only this many bits per word.
+ *   in_sz              perform_iann() decodes only this many bits per word.
+ *                      Compile the model with RZNAI_AGI_IN_SZ to match the
+ *                      profile chosen here: 32/32 or 16/16.
  *
  * Bit 0 is not ours either.  cycle() keys the Knowledge Bank on (input >> 1)
  * and recovers the source from the low bit; both recall paths set it to 1, so
@@ -17,20 +19,24 @@
  * bit, and the public packer API is identical across profiles.
  *
  * ---------------------------------------------------------------------------
- * TWO PROFILES.  Select with -DRZN_PACK_PROFILE=16 (default) or =32.
+ * TWO PROFILES.  Select with -DRZN_PACK_PROFILE=32 (default) or =16.
  * ---------------------------------------------------------------------------
  *
- * Profile 16 -- DEFAULT.  Fits the model as it ships today, at a cost in
- * precision: RGB444 colour, and sensors capped at ~4093 px by the 24-bit
- * chunked index.
+ * Profile 16 -- fits a model built with in_sz = 16, at a cost in precision:
+ * RGB444 colour, and sensors capped at ~4093 px by the 24-bit chunked index.
+ * Measured against the real model, RGB444 leaves it effectively stuck on one
+ * camera -- see harness/COLOUR_DEPTH.md.
  *
  *   bits 15..4   payload      12 bits
  *   bits 3..2    tag
  *   bit 1        sensor id
  *   bit 0        0            source flag: 0 = sensor, 1 = recall
  *
- * Profile 32 -- lossless, but requires raising the model's in_sz to 32, which
- * doubles hidden_sz (= in_sz * In_Q_ct * 2) from 224 to 448 units.
+ * Profile 32 -- DEFAULT.  Lossless RGB888.  Requires the model to be built
+ * with RZNAI_AGI_IN_SZ=32, which doubles hidden_sz (= in_sz * In_Q_ct * 2)
+ * from 224 to 448 units and costs about 3.8x the compute per cycle.  The two
+ * settings MUST match: a profile-32 word decoded at in_sz 16 shows the model
+ * part of one colour channel instead of all three.
  *
  *   bit 31       0            kept clear, so words stay non-negative
  *   bits 30..29  tag
@@ -40,7 +46,7 @@
  *
  * Payload by tag:
  *   RZN_TAG_INDEX  spiral index.  Profile 32 carries it whole in 27 bits
- *                  (sensors to ~11585 px).  Profile 12 sends it as up to two
+ *                  (sensors to ~11585 px).  Profile 16 sends it as up to two
  *                  little-endian 12-bit chunks -- 24 bits, sensors to ~4096
  *                  px -- using the sensor bit as a "more chunks follow" flag,
  *                  since an index word belongs to both cameras and has no
@@ -66,7 +72,7 @@ extern "C" {
 #endif
 
 #ifndef RZN_PACK_PROFILE
-#define RZN_PACK_PROFILE 16
+#define RZN_PACK_PROFILE 32
 #endif
 
 typedef enum {

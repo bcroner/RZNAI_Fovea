@@ -4,13 +4,13 @@
 #   make test       build and run the tests
 #   make run        build and run the demo on the synthetic scene
 #   make DISPARITY=1 ...   include the optional epipolar disparity stage
-#   make PROFILE=32 ...    lossless packing; needs the model's in_sz raised
+#   make PROFILE=16 ...    narrow packing for a model built with in_sz=16
 
 CC      ?= gcc
 CSTD    ?= -std=c11
 WARN     = -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion
 OPT     ?= -O2
-PROFILE ?= 16
+PROFILE ?= 32
 CFLAGS   = $(CSTD) $(WARN) $(OPT) -Isrc -DRZN_PACK_PROFILE=$(PROFILE)
 LDFLAGS  =
 

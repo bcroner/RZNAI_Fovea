@@ -5,7 +5,7 @@ REM
 REM   build_msvc.bat            build demo + tests
 REM   build_msvc.bat test       build, then run the tests
 REM   set DISPARITY=1 & build_msvc.bat    include the disparity stage
-REM   set PROFILE=32 & build_msvc.bat     lossless packing; needs in_sz raised
+REM   set PROFILE=16 & build_msvc.bat     narrow packing for a model with in_sz=16
 
 setlocal
 
@@ -15,7 +15,7 @@ if not defined VCINSTALLDIR (
   )
 )
 
-if not defined PROFILE set PROFILE=16
+if not defined PROFILE set PROFILE=32
 set CFLAGS=/nologo /std:c11 /W4 /O2 /Isrc /DRZN_PACK_PROFILE=%PROFILE%
 if "%DISPARITY%"=="1" (
   set CFLAGS=%CFLAGS% /DRZN_ENABLE_DISPARITY=1

@@ -100,31 +100,36 @@ things about it constrain what may go in a word:
 
 ### Two packing profiles
 
-**Profile 16 is the default** — it runs against the model exactly as it ships,
-with no change to `in_sz`. Select the other with `-DRZN_PACK_PROFILE=32`. All
-of it lives in `src/rzn_pack.h`; the spiral engine never sees a bit, and the
-packer API is identical across profiles.
+**Profile 32 is the default**, on the strength of the measurement in
+[harness/COLOUR_DEPTH.md](harness/COLOUR_DEPTH.md). Build the model with
+`RZNAI_AGI_IN_SZ=32` to match. Select the narrow packing with
+`-DRZN_PACK_PROFILE=16` (and `in_sz` 16 to match). All of it lives in
+`src/rzn_pack.h`; the spiral engine never sees a bit, and the packer API is
+identical across profiles.
+
+**The two settings must match — 32/32 or 16/16.** A profile-32 word decoded at
+`in_sz` 16 shows the model part of one colour channel instead of all three.
 
 ```
-profile 16 -- DEFAULT.  Fits the model as it ships today.
-  bits 15..4   payload      12 bits
-  bits 3..2    tag          INDEX | LEFT | RIGHT | DISP
+profile 32 -- DEFAULT.  Lossless RGB888, needs RZNAI_AGI_IN_SZ=32.
+  bit 31       0            kept clear, so words stay non-negative
+  bits 30..29  tag          INDEX | LEFT | RIGHT | DISP
+  bits 28..2   payload      27 bits
   bit 1        sensor id    0 = left camera, 1 = right camera
   bit 0        0            source flag: 0 = sensor, 1 = recall
 
-profile 32 -- lossless, needs the model's in_sz raised to 32
-  bit 31       0            kept clear, so words stay non-negative
-  bits 30..29  tag
-  bits 28..2   payload      27 bits
+profile 16 -- narrow, for a model built with in_sz = 16
+  bits 15..4   payload      12 bits
+  bits 3..2    tag
   bit 1        sensor id
   bit 0        0            source flag
 ```
 
-| tag | profile 16 (default) | profile 32 |
+| tag | profile 32 (default) | profile 16 |
 |---|---|---|
-| `INDEX` | up to two little-endian 12-bit chunks, 24 bits — sensors to ~4093 px | spiral index whole, 27 bits — sensors to ~11585 px |
-| `LEFT` / `RIGHT` | RGB444, the high nibble of each channel | RGB888, exact |
-| `DISP` | disparity, clamped to 0..4095 | disparity + 32768 |
+| `INDEX` | spiral index whole, 27 bits — sensors to ~11585 px | up to two little-endian 12-bit chunks, 24 bits — sensors to ~4093 px |
+| `LEFT` / `RIGHT` | RGB888, exact | RGB444, the high nibble of each channel |
+| `DISP` | disparity + 32768 | disparity, clamped to 0..4095 |
 
 The sensor ceiling is a real limit, not a formality, so the engine enforces it:
 `rzn_fovea_init()` refuses — before allocating anything — a sensor whose spiral
@@ -142,29 +147,28 @@ pixel normally costs 2 words: an `INDEX` word is emitted only when the index is
 words appear only at the handful of discontinuities where the spiral leaves and
 re-enters the sensor — 26 of them for a 64×48 sensor.
 
-### `in_sz` — why profile 16 is the default
+### `in_sz` — why profile 32 is the default
 
-`instantiate()` sets `in_sz = 16`, so the model reads only the low 16 bits of
-each word. Profile 16 is built to that, which means the engine works against
-the model as it stands today with no change to `hidden_sz`, `input_weights`, or
-`input_targets`.
+Measured against the real model — full write-up in
+[harness/COLOUR_DEPTH.md](harness/COLOUR_DEPTH.md).
 
-Profile 32 stays available and fully tested. Switching to it means raising
-`in_sz` to 32 on the model side, and because `hidden_sz = in_sz * In_Q_ct * 2`
-that doubles the hidden layer from 224 to 448 units, with `input_weights` and
-`input_targets` growing to match. What you buy is exact colour and a larger
-sensor ceiling.
+RGB888 changes the model's stereo behaviour qualitatively. Under RGB444 it asks
+for the left camera **32 times in 10 000 cycles** and is effectively stuck on
+one eye; under RGB888 it alternates **58/42**. It also learns 2.8× more distinct
+state transitions from the same video, and RGB444 pins output bit 0 — the
+model's decision to consult memory — so that choice gets made by the alternation
+cap rather than by the model.
 
-The word-rate difference is only about 0.4% (see below), so the trade is about
-precision and network size, not bandwidth.
+The cost is about **3.8× compute per cycle**, all of it `hidden_sz` doubling
+from 224 to 448, and **nothing in bandwidth** — RGB444 is in fact 0.4% *worse*
+on the wire, because its 12-bit payload needs two words for a spiral index above
+4096.
 
-**Measured against the real model — see [harness/COLOUR_DEPTH.md](harness/COLOUR_DEPTH.md).**
-RGB888 changes the model's stereo behaviour qualitatively: under RGB444 it asks
-for the left camera 32 times in 10 000 cycles and is effectively stuck on one
-eye, where under RGB888 it alternates 58/42. It also learns 2.8x more distinct
-state transitions from the same video. The cost is ~3.8x compute per cycle
-(`hidden_sz` doubles), and nothing in bandwidth. **Recommendation: profile 32
-with `in_sz = 32`**, unless compute is the binding constraint.
+Profile 16 stays available and fully tested. It is the right choice only if the
+robot's compute budget cannot absorb roughly 4× per cycle — and even then, the
+better trade is usually to keep `in_sz = 32` and shrink `In_Q_ct` or
+`hidden_ct`, which reduces the network without taking colour discrimination away
+from it.
 
 One limit to remember either way: profile 16's 24-bit chunked index caps the
 sensor's largest dimension at **~4093 px**. Comfortable for current hardware,
@@ -242,7 +246,7 @@ sh build.sh test
 ```
 
 ```bash
-PROFILE=32 sh build.sh test
+PROFILE=16 sh build.sh test
 ```
 
 ```bash
@@ -254,7 +258,7 @@ DISPARITY=1 sh build.sh test
 ```
 
 `PROFILE` and `DISPARITY` work the same way for `make` and for
-`build_msvc.bat` (`set PROFILE=32` first). Both toolchains build clean at
+`build_msvc.bat` (`set PROFILE=16` first). Both toolchains build clean at
 `-Wall -Wextra -Wpedantic -Wshadow -Wconversion` and `/W4`, in every
 combination.
 

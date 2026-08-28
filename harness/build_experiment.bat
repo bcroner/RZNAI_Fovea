@@ -16,8 +16,10 @@ if not defined VCINSTALLDIR (
 set HERE=%~dp0
 set MODEL=%~1
 if "%MODEL%"=="" set MODEL=%HERE%..\..\RZNAI_AGI
-if not defined PROFILE set PROFILE=16
-if not defined INSZ set INSZ=16
+REM PROFILE and INSZ must match: 32/32 or 16/16. A profile-32 word decoded
+REM at in_sz 16 shows the model part of one colour channel, not all three.
+if not defined PROFILE set PROFILE=32
+if not defined INSZ set INSZ=32
 
 if not exist "%MODEL%\RZNAI_AGI.cpp" (
   echo error: no RZNAI_AGI.cpp under "%MODEL%"

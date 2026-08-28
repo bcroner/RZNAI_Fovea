@@ -83,10 +83,12 @@ needs two words for a spiral index above 4096. Colour depth is free on the wire.
 target array doubles. That is `hidden_sz` going from 224 to 448, not the
 packing.
 
-## Recommendation
+## Recommendation — adopted
 
-**Switch to profile 32 with `in_sz = 32`** unless the robot's compute budget
-cannot absorb roughly 4× per cycle.
+**Profile 32 with `in_sz = 32` is now the default** across `build.sh`,
+`Makefile`, `build_msvc.bat` and both harness scripts. Profile 16 remains fully
+tested and one flag away, and is the right choice only if the robot's compute
+budget cannot absorb roughly 4× per cycle.
 
 The reasoning is not "more bits are better". It is that the model's stereo
 behaviour changes qualitatively: under RGB444 it stops distinguishing the two
