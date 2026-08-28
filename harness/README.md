@@ -209,31 +209,43 @@ the model never *requests* recall, because its output is constant (see 0a–0c
 above). Recall engages the moment the output varies — `-fix-init` demonstrates
 exactly that, which is where the numbers in the table come from.
 
-### 1. The model's output does not vary with its input
+### 1. RESOLVED: the model's output now varies with its input
 
-The model chooses which camera to read next from its own output
-(`sensor = (output >> 1) & sensor_mask`), which makes the requested-sensor
-histogram a free probe of whether the network is responding to anything:
+This section previously recorded that the model's output was constant. It is
+not any more. [PR #5](https://github.com/bcroner/RZNAI_AGI/pull/5) fixed the
+initialisation and the reinforcement rule together, which had to happen
+together: initialisation set the degenerate structure up, and reinforcement
+pushed it back.
 
-```
-asked for left          1
-asked for right     49999
-```
+Same 20 000 real foveal inputs, shipped initialisation, no test-only overrides:
 
-It asked for the right camera on 49 999 of 50 000 cycles. Its output is
-effectively constant, so **the input is not influencing the network's
-behaviour**.
+| | before | after |
+|---|---|---|
+| distinct outputs | **1** (`14`) | **8** |
+| layer-0 firing patterns | 1 | 10368 |
+| final-layer patterns | 1 | 10367 |
+| output bits that move | none | 1, 2, 3 |
 
-Some of this was `perform_iann()` unconditionally returning
-`(1 << out_sz) - 1` — fixed in patch 0003 — but the output is still not
-varying afterwards. With every weight initialised to ±16384 and every target
-to `j % hidden_sz`, the network is close to symmetric by construction, so this
-may be the initialisation rather than a further bug.
+In a live run the sensor choice — output bit 1 — now varies instead of being
+pinned. 50 000 cycles, default initialisation:
 
-**What this means for the packing decision:** the question "can the AGI work
-with RGB444, or does it need RGB888?" cannot be answered yet. It is not a
-question about the transport — profile 16 delivers exactly what it claims —
-it is blocked on the model producing input-dependent behaviour at all.
+| sensor | sensory | recall | asked left | asked right | KB entries | recall probe |
+|---|---|---|---|---|---|---|
+| 64×48 | 25000 | 25000 | 50 | 24950 | 10228 | route recovered |
+| 96×72 | 25000 | 25000 | 79 | 24921 | 7155 | route recovered |
+| 160×120 | 25000 | 25000 | 62 | 24938 | 7942 | route recovered |
+| 320×240 | 25000 | 25000 | 40 | 24960 | 6920 | route recovered |
+
+Weights and targets are now drawn from a deterministic mixer over
+`(source, slot)` with **separate salts** for target and weight — `hidden_sz` is
+even, so a shared draw locks target parity to weight sign and re-flattens the
+network. Reinforcement strengthens a connection when it pushed its target the
+way the target actually went. `-fix-init` is left in the harness as a
+comparison lever; it is no longer needed to make the model respond.
+
+**So the RGB444 question is finally answerable.** The transport was never the
+constraint — profile 16 delivers what it claims — and the model now produces
+input-dependent behaviour to measure against.
 
 ### 2. Sensor selection and a foveal stream pull in different directions
 
