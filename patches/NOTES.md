@@ -123,6 +123,17 @@ moment a rewards or disincentives vector outgrows its initial 16 slots.
 
 ## Not fixed — flagged for you
 
+> **Update:** recall is now working. [PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3)
+> fixed the memory-safety defects in `executeBFS`;
+> [PR #4](https://github.com/bcroner/RZNAI_AGI/pull/4) settled the two design
+> questions and turned it on -- an open-addressed state map for the BFS, and a
+> bounded recall excursion capped at `In_Q_ct - 1` with an immediate fall back
+> to the sensors when recall yields nothing. Doing so exposed five further
+> defects in code that had never run, including a Knowledge Bank whose edges
+> pointed from input states to 4-bit action values. `simp_vector_append`'s
+> cross-wired disincentive branch and the inverted `get_rw`/`get_dv` stubs noted
+> below are fixed there too. See `../harness/README.md` for the measurements.
+
 - **`get_rw()` / `get_dv()` return `cycle % 32767` and `cycle % 65537` as
   `bool`.** That is true for every cycle *except* multiples of the modulus,
   which looks inverted: a 50 000-cycle run accumulated 681 rewards and 681
@@ -147,18 +158,6 @@ moment a rewards or disincentives vector outgrows its initial 16 slots.
   overwriting the other's entries. Found while tracing the constant-output
   behaviour; not fixed, because whether the fix is the array or the counters
   depends on what you intend the two vectors to be.
-
-> **Update:** recall is now working. [PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3)
-> fixed the memory-safety defects in `executeBFS`;
-> [PR #4](https://github.com/bcroner/RZNAI_AGI/pull/4) settled the two design
-> questions and turned it on -- an open-addressed state map for the BFS, and a
-> bounded recall excursion capped at `In_Q_ct - 1` with an immediate fall back
-> to the sensors when recall yields nothing. Doing so exposed five further
-> defects in code that had never run, including a Knowledge Bank whose edges
-> pointed from input states to 4-bit action values. `simp_vector_append`'s
-> cross-wired disincentive branch and the inverted `get_rw`/`get_dv` stubs noted
-> below are fixed there too. See `../harness/README.md` for the measurements.
-
 - **`in_read_from_recall` is never assigned**, so the recall path is
   unreachable:
 
