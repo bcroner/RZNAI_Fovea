@@ -148,6 +148,13 @@ moment a rewards or disincentives vector outgrows its initial 16 slots.
   behaviour; not fixed, because whether the fix is the array or the counters
   depends on what you intend the two vectors to be.
 
+> **Update:** the `executeBFS` defects below were fixed and merged in
+> [PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3) — inverted loop
+> condition, the `ret`/`parent` write, the unguarded back-walk, the leaks, and
+> a range-checked bucket index. Recall itself is still **not enabled**: the
+> two design decisions named below remain open, and both are now recorded in
+> comments in the model source.
+
 - **`in_read_from_recall` is never assigned**, so the recall path is
   unreachable:
 

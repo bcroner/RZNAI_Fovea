@@ -165,6 +165,25 @@ writes to the Knowledge Bank every cycle, and nothing ever reads it back. As it
 stands the model has no working memory, so it cannot use anything it records
 about the foveal stream.
 
+**Status.** The memory-safety defects in `executeBFS()` were fixed and merged in
+[PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3), so the code is correct for
+the day it is switched on. Recall is still off, because enabling it needs two
+decisions that are architecture rather than repair:
+
+1. **A state-to-index mapping.** `parent[]` and `visited[]` are sized by
+   `kbsts` — which is `0` and never incremented — but indexed by raw 32-bit
+   state values. Sizing them correctly is not enough; states are not dense node
+   numbers, and nothing in the codebase maps them to one. `executeBFS()` now
+   returns a well-formed single-element path rather than searching, which is
+   safe and costs nothing, until the mapping is chosen.
+2. **A sensory/recall alternation policy.** Measured with the flag propagated,
+   the model served **1 sensory reading in 2000 cycles** and recalled `0` for
+   the other 1999 — nothing returns it to sensory input once output bit 0
+   latches, so it reads the world once and never looks again.
+
+Both are recorded in comments at the declaration site in `cycle()` and in
+`executeBFS()`.
+
 ### 1. The model's output does not vary with its input
 
 The model chooses which camera to read next from its own output
