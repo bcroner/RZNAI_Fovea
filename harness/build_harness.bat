@@ -20,6 +20,7 @@ if "%MODEL%"=="" set MODEL=%HERE%..\..\RZNAI_AGI
 set CYCLES=%~2
 if "%CYCLES%"=="" set CYCLES=2000
 if not defined PROFILE set PROFILE=16
+if not defined INSZ set INSZ=16
 
 if not exist "%MODEL%\RZNAI_AGI.cpp" (
   echo error: no RZNAI_AGI.cpp under "%MODEL%"
@@ -30,7 +31,7 @@ set OUT=%HERE%..\build
 if not exist "%OUT%" mkdir "%OUT%"
 
 set KNOBS=/DRZNAI_AGI_EXTERNAL_SENSORS /DRZNAI_AGI_NO_MAIN /DRZNAI_AGI_MAX_CYCLES=%CYCLES%
-set CFLAGS=/nologo /O2 /I"%HERE%..\src" /I"%MODEL%" /DRZN_PACK_PROFILE=%PROFILE%
+set CFLAGS=/nologo /O2 /I"%HERE%..\src" /I"%MODEL%" /DRZN_PACK_PROFILE=%PROFILE% /DRZNAI_AGI_IN_SZ=%INSZ%
 
 echo building the engine (C)...
 cl %CFLAGS% /W4 /std:c11 /c ^

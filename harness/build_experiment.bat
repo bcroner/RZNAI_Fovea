@@ -17,6 +17,7 @@ set HERE=%~dp0
 set MODEL=%~1
 if "%MODEL%"=="" set MODEL=%HERE%..\..\RZNAI_AGI
 if not defined PROFILE set PROFILE=16
+if not defined INSZ set INSZ=16
 
 if not exist "%MODEL%\RZNAI_AGI.cpp" (
   echo error: no RZNAI_AGI.cpp under "%MODEL%"
@@ -29,7 +30,7 @@ if not exist "%OUT%" mkdir "%OUT%"
 REM The experiment calls perform_iann() directly and never reaches
 REM read_sensory(), so the model keeps its own in_0 / in_1 stubs.
 set KNOBS=/DRZNAI_AGI_NO_MAIN
-set CFLAGS=/nologo /O2 /I"%HERE%..\src" /I"%MODEL%" /DRZN_PACK_PROFILE=%PROFILE%
+set CFLAGS=/nologo /O2 /I"%HERE%..\src" /I"%MODEL%" /DRZN_PACK_PROFILE=%PROFILE% /DRZNAI_AGI_IN_SZ=%INSZ%
 
 cl %CFLAGS% /W4 /std:c11 /c ^
   "%HERE%..\src\rzn_spiral.c" "%HERE%..\src\rzn_pack.c" "%HERE%..\src\rzn_frame.c" ^

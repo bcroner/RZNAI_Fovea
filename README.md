@@ -153,16 +153,20 @@ that doubles the hidden layer from 224 to 448 units, with `input_weights` and
 `input_targets` growing to match. What you buy is exact colour and a larger
 sensor ceiling.
 
-The word-rate difference is only about 0.4% (see below), so that trade is about
-precision and network size, not bandwidth. Two things to watch while running on
-profile 16:
+The word-rate difference is only about 0.4% (see below), so the trade is about
+precision and network size, not bandwidth.
 
-- **RGB444.** Each channel keeps its high nibble only, 16 levels instead of
-  256. If the AGI turns out to need finer colour discrimination, this is the
-  first thing to change.
-- **~4093 px.** The 24-bit chunked index caps the sensor's largest dimension.
-  Comfortable for current hardware; worth remembering before specifying a
-  higher-resolution camera.
+**Measured against the real model — see [harness/COLOUR_DEPTH.md](harness/COLOUR_DEPTH.md).**
+RGB888 changes the model's stereo behaviour qualitatively: under RGB444 it asks
+for the left camera 32 times in 10 000 cycles and is effectively stuck on one
+eye, where under RGB888 it alternates 58/42. It also learns 2.8x more distinct
+state transitions from the same video. The cost is ~3.8x compute per cycle
+(`hidden_sz` doubles), and nothing in bandwidth. **Recommendation: profile 32
+with `in_sz = 32`**, unless compute is the binding constraint.
+
+One limit to remember either way: profile 16's 24-bit chunked index caps the
+sensor's largest dimension at **~4093 px**. Comfortable for current hardware,
+worth knowing before specifying a higher-resolution camera.
 
 ### Model-side fixes
 
