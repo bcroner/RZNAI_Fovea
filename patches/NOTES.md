@@ -148,12 +148,16 @@ moment a rewards or disincentives vector outgrows its initial 16 slots.
   behaviour; not fixed, because whether the fix is the array or the counters
   depends on what you intend the two vectors to be.
 
-> **Update:** the `executeBFS` defects below were fixed and merged in
-> [PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3) — inverted loop
-> condition, the `ret`/`parent` write, the unguarded back-walk, the leaks, and
-> a range-checked bucket index. Recall itself is still **not enabled**: the
-> two design decisions named below remain open, and both are now recorded in
-> comments in the model source.
+> **Update:** recall is now working. [PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3)
+> fixed the memory-safety defects in `executeBFS`;
+> [PR #4](https://github.com/bcroner/RZNAI_AGI/pull/4) settled the two design
+> questions and turned it on -- an open-addressed state map for the BFS, and a
+> bounded recall excursion capped at `In_Q_ct - 1` with an immediate fall back
+> to the sensors when recall yields nothing. Doing so exposed five further
+> defects in code that had never run, including a Knowledge Bank whose edges
+> pointed from input states to 4-bit action values. `simp_vector_append`'s
+> cross-wired disincentive branch and the inverted `get_rw`/`get_dv` stubs noted
+> below are fixed there too. See `../harness/README.md` for the measurements.
 
 - **`in_read_from_recall` is never assigned**, so the recall path is
   unreachable:

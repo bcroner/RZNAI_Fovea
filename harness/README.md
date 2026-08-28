@@ -165,24 +165,49 @@ writes to the Knowledge Bank every cycle, and nothing ever reads it back. As it
 stands the model has no working memory, so it cannot use anything it records
 about the foveal stream.
 
-**Status.** The memory-safety defects in `executeBFS()` were fixed and merged in
-[PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3), so the code is correct for
-the day it is switched on. Recall is still off, because enabling it needs two
-decisions that are architecture rather than repair:
+**Status: fixed.** [PR #3](https://github.com/bcroner/RZNAI_AGI/pull/3) repaired
+the memory-safety defects; [PR #4](https://github.com/bcroner/RZNAI_AGI/pull/4)
+turned recall on. **The model can now read back the bank it writes.**
 
-1. **A state-to-index mapping.** `parent[]` and `visited[]` are sized by
-   `kbsts` — which is `0` and never incremented — but indexed by raw 32-bit
-   state values. Sizing them correctly is not enough; states are not dense node
-   numbers, and nothing in the codebase maps them to one. `executeBFS()` now
-   returns a well-formed single-element path rather than searching, which is
-   safe and costs nothing, until the mapping is chosen.
-2. **A sensory/recall alternation policy.** Measured with the flag propagated,
-   the model served **1 sensory reading in 2000 cycles** and recalled `0` for
-   the other 1999 — nothing returns it to sensory input once output bit 0
-   latches, so it reads the world once and never looks again.
+The two decisions that were open, and how they were settled:
 
-Both are recorded in comments at the declaration site in `cycle()` and in
-`executeBFS()`.
+1. **State-to-index mapping** — an open-addressed map keyed by state value,
+   storing the key beside the value so states that hash alike resolve rather
+   than being conflated. Power-of-two capacity doubling at half load; lookup
+   stays O(1) and it holds as many states as the bank accumulates. `kbsts` is
+   no longer load-bearing. The shared `Simp_Queue` is not used inside the
+   search either — `simp_queue_dequeue` walks to the tail on every pop, which
+   would make the BFS quadratic in the size of the bank.
+2. **Sensory/recall alternation** — recall is a bounded excursion, never an
+   absorbing state. At most `In_Q_ct - 1` in a row, so at least one genuine
+   observation always remains in `Input_Queue`; and a recall yielding `0`
+   returns to the sensors immediately. A robot must not go blind, and
+   unproductive introspection should yield to perception.
+
+Turning it on exposed five defects in code that had never run — the Knowledge
+Bank's edges pointed from input states to 4-bit action values so the graph was
+untraversable; state identity kept a flag bit so values doubled on every recall
+round trip until they overflowed into the sign bit; bucket lookups were
+unguarded against negative operands; the disincentive branch added and removed
+from the same vector; and `get_rw`/`get_dv` were inverted so reward and
+disincentive fought every cycle. All are in PR #4.
+
+### Measured — 50 000 cycles on real foveal stereo
+
+| sensor | sensory | recall | KB entries | recall probe |
+|---|---|---|---|---|
+| 64×48 | 25000 | 25000 | 25522 | route recovered |
+| 96×72 | 22248 | 27752 | 10134 | route recovered |
+| 160×120 | 25000 | 25000 | 15190 | route recovered |
+
+`rzn_harness` ends with a recall probe: it seeds a goal from an edge the model
+genuinely recorded and asks `generateBFSs()` to find its way back, exercising
+`executeBFS()` end to end against a bank built from live camera data.
+
+**Still open, and independent of all of this:** with the shipped initialisation
+the model never *requests* recall, because its output is constant (see 0a–0c
+above). Recall engages the moment the output varies — `-fix-init` demonstrates
+exactly that, which is where the numbers in the table come from.
 
 ### 1. The model's output does not vary with its input
 

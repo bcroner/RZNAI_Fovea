@@ -71,6 +71,62 @@ static void fix_init(AGI_Sys *stm)
                           % (unsigned)stm->out_sz);
 }
 
+/* Does recall actually work?
+ *
+ * get_rw() fires every 32767 cycles, so a short run records almost no reward
+ * signal and the recall machinery never gets a goal to search for. This seeds
+ * a goal from an edge the model genuinely recorded, then asks generateBFSs()
+ * to find its way back to it -- exercising executeBFS() end to end against a
+ * real Knowledge Bank built from real foveal input. */
+static void probe_recall(AGI_Sys *stm)
+{
+    long long entries = 0, states = 0;
+    Dict_Entry *edge = 0;
+    int b;
+
+    for (b = 0; b < stm->kbpsz; b++) {
+        Dict_Entry *e = stm->Knowledge_Bank[b]->next;
+        if (e) states++;
+        while (e) {
+            entries++;
+            if (!edge && e->init_state != e->vect_state)
+                edge = e;
+            e = e->next;
+        }
+    }
+
+    printf("\n--- recall probe ---\n");
+    printf("  knowledge bank      %lld entries in %lld buckets\n",
+           entries, states);
+
+    if (!edge) {
+        printf("  no usable edge recorded; nothing to search\n");
+        return;
+    }
+
+    printf("  seeding goal        state %d, reachable from state %d\n",
+           (int)edge->vect_state, (int)edge->init_state);
+
+    stm->rewards[0] = edge->vect_state;
+    stm->rwtop = 0;
+    stm->Current_Input = edge->init_state << 1;   /* generateBFSs shifts it back */
+
+    generateBFSs(stm);
+
+    if (stm->kb_rw_path != 0 && stm->kb_rw_path[0] != -1) {
+        int n = 0;
+        printf("  BFS found a path   ");
+        while (stm->kb_rw_path[n] != -1 && n < 16) {
+            printf(" %d", (int)stm->kb_rw_path[n]);
+            n++;
+        }
+        printf(" -> %d\n", (int)edge->vect_state);
+        printf("  RECALL WORKS: the bank was searched and a route recovered\n");
+    } else {
+        printf("  BFS found no path to the seeded goal\n");
+    }
+}
+
 int main(int argc, char **argv)
 {
     int32_t w = 64, h = 48, sx = -1, sy = -1;
@@ -183,6 +239,8 @@ int main(int argc, char **argv)
         printf("  knowledge bank sz   %d\n", (int)stm->kbsz);
         printf("  rewards / disinc    %d / %d\n",
                (int)stm->rwtop + 1, (int)stm->dvtop + 1);
+
+        probe_recall(stm);
     }
 
     rzn_bridge_close();
