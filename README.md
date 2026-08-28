@@ -90,7 +90,9 @@ things about it constrain what may go in a word:
 
 - `sensory_bits = 1` — the low bits identify the sensor. Two addressable
   sensors is exactly what a two-camera rig needs.
-- `in_sz = 16` — `perform_iann()` decodes only the low **16** bits per word.
+- `in_sz` — `perform_iann()` decodes only this many bits per word. It defaults
+  to **16** and is now a compile-time knob (`RZNAI_AGI_IN_SZ`); it must match
+  the packing profile, 16/16 or 32/32.
 - **Bit 0 is not ours.** `cycle()` keys the Knowledge Bank on `input >> 1` and
   recovers the source from the low bit, and both recall paths set it to 1, so
   a sensory word must always leave it 0. The sensor id sits directly above it,
