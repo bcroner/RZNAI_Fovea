@@ -53,7 +53,13 @@ Input_Queue         00003152 00003152 00003152 00003596 00001026 00000d56 000031
 Real foveal stereo data reaches the model and populates its input queue. Exit
 code 0. **The wiring works.**
 
-## Two findings that matter more than the wiring
+## Two findings that mattered more than the wiring — both now fixed
+
+Everything below is kept as the investigation record: what was measured, what
+it turned out to be, and how it was settled. Sections tagged RESOLVED or
+"Status: fixed" carry the outcome. `main` at 52cc546 has all five PRs merged;
+the model compiles, runs, recalls, and responds to what it sees.
+
 
 ### 0. Initialisation experiment — see `init_experiment.cpp`
 
